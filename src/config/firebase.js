@@ -3,8 +3,20 @@ import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 
-// Firebase configuration - loaded from environment variables
-const firebaseConfig = {
+// Firebase configuration - loaded from environment variables or production defaults
+const isProduction = process.env.NODE_ENV === 'production' && window.location.hostname.includes('github.io');
+
+const firebaseConfig = isProduction ? {
+  // Production values for GitHub Pages
+  apiKey: "demo",
+  authDomain: "demo.firebaseapp.com",
+  projectId: "demo",
+  storageBucket: "demo.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:demo",
+  measurementId: "demo"
+} : {
+  // Development values from .env
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,

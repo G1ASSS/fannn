@@ -5,7 +5,9 @@ import * as chat from '../services/chat';
 import { verifyTOTPCode, getTOTPUri, is2FAConfigured, getTOTPSecret } from '../services/totp';
 
 // Password is stored as base64 in .env to avoid $, &, and other special char issues
-const ADMIN_PASSWORD = (() => {
+// Use demo values for GitHub Pages production
+const isProduction = process.env.NODE_ENV === 'production' && window.location.hostname.includes('github.io');
+const ADMIN_PASSWORD = isProduction ? 'demo' : (() => {
   try {
     return atob(process.env.REACT_APP_ADMIN_PASSWORD || '');
   } catch {

@@ -1,6 +1,8 @@
 import * as OTPAuth from 'otpauth';
 
-const TOTP_SECRET = process.env.REACT_APP_ADMIN_TOTP_SECRET || '';
+// Use demo secret for GitHub Pages production
+const isProduction = process.env.NODE_ENV === 'production' && window.location.hostname.includes('github.io');
+const TOTP_SECRET = isProduction ? 'DEMOSECRETDEMOSECRETDEMOSECRET' : (process.env.REACT_APP_ADMIN_TOTP_SECRET || '');
 const TOTP_ISSUER = 'UBSS Admin';
 const TOTP_LABEL = 'admin@ubss';
 

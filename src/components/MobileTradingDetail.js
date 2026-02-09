@@ -44,7 +44,8 @@ const MobileTradingDetail = () => {
           }
         } else if (category === 'stocks') {
           // Use Alpha Vantage API for stocks
-          const apiKey = process.env.REACT_APP_ALPHA_VANTAGE_API_KEY || 'demo';
+          const isProduction = process.env.NODE_ENV === 'production' && window.location.hostname.includes('github.io');
+          const apiKey = isProduction ? 'demo' : (process.env.REACT_APP_ALPHA_VANTAGE_API_KEY || 'demo');
           const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`);
           const data = await response.json();
           if (data['Global Quote']) {

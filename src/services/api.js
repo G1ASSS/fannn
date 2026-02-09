@@ -391,7 +391,8 @@ const FALLBACK_STOCK_DATA = {
 
 // Fetch a single stock quote from Finnhub
 const fetchFinnhubQuote = async (symbol) => {
-  const token = process.env.REACT_APP_FINNHUB_TOKEN;
+  const isProduction = process.env.NODE_ENV === 'production' && window.location.hostname.includes('github.io');
+  const token = isProduction ? 'demo' : process.env.REACT_APP_FINNHUB_TOKEN;
   if (!token || token === 'demo') return null;
 
   const response = await fetch(
@@ -427,7 +428,8 @@ export const fetchStockPrices = async (symbols = ['AAPL', 'TSLA', 'AMZN', 'GOOGL
   }
 
   const stockData = {};
-  const token = process.env.REACT_APP_FINNHUB_TOKEN;
+  const isProduction = process.env.NODE_ENV === 'production' && window.location.hostname.includes('github.io');
+  const token = isProduction ? 'demo' : process.env.REACT_APP_FINNHUB_TOKEN;
 
   try {
     if (token && token !== 'demo') {
@@ -961,7 +963,8 @@ export const createForexWebSocket = (pairs, onMessage) => {
 
 // Real-time WebSocket for Stocks using Finnhub WebSocket API
 export const createStockWebSocket = (symbols, onMessage) => {
-  const token = process.env.REACT_APP_FINNHUB_TOKEN;
+  const isProduction = process.env.NODE_ENV === 'production' && window.location.hostname.includes('github.io');
+  const token = isProduction ? 'demo' : process.env.REACT_APP_FINNHUB_TOKEN;
   let ws = null;
   let fallbackIntervalId = null;
   let reconnectAttempts = 0;
