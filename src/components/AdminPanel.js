@@ -4,8 +4,14 @@ import * as database from '../services/database';
 import * as chat from '../services/chat';
 import { verifyTOTPCode, getTOTPUri, is2FAConfigured, getTOTPSecret } from '../services/totp';
 
-// Password is stored as base64 in .env to avoid special character issues ($, &, etc.)
-const ADMIN_PASSWORD = atob(process.env.REACT_APP_ADMIN_PASSWORD || '');
+// Password is stored as base64 in .env to avoid $, &, and other special char issues
+const ADMIN_PASSWORD = (() => {
+  try {
+    return atob(process.env.REACT_APP_ADMIN_PASSWORD || '');
+  } catch {
+    return process.env.REACT_APP_ADMIN_PASSWORD || '';
+  }
+})();
 
 const AdminPanel = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);

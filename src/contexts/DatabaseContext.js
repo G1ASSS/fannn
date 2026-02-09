@@ -87,7 +87,7 @@ export const DatabaseProvider = ({ children }) => {
       setUserDeposits(prev => [deposit, ...prev]);
       return deposit;
     } catch (error) {
-      console.error('DatabaseContext - Error creating deposit:', error);
+      console.error('Error creating deposit:', error);
       throw error;
     }
   };
@@ -244,7 +244,7 @@ export const DatabaseProvider = ({ children }) => {
       });
 
       // Subscribe to user trades
-      unsubscribeTrades = database.subscribeToUserTrades(user.id, (snapshot) => {
+      unsubscribeTrades = database.subscribeToUserTrades(user.id, user.walletAddress, (snapshot) => {
         const trades = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setUserTrades(trades);
       });
@@ -271,7 +271,18 @@ export const DatabaseProvider = ({ children }) => {
       if (unsubscribeTrades) unsubscribeTrades();
       if (unsubscribeChat) unsubscribeChat();
     };
-  }, [user?.id]); // Only depend on user.id to avoid unnecessary re-subscriptions
+  }, [user?.id, user?.walletAddress]); // Depend on both user.id and user.walletAddress
+
+  // Test function to manually complete trading plans
+  const testCompleteTradingPlans = async () => {
+    try {
+      console.log('🧪 Testing trading plan completion...');
+      await database.processCompletedTradingPlans();
+      console.log('✅ Trading plan completion test completed');
+    } catch (error) {
+      console.error('❌ Error testing trading plan completion:', error);
+    }
+  };
 
   const value = {
     user,
@@ -286,6 +297,7 @@ export const DatabaseProvider = ({ children }) => {
     createSmartTrade,
     closeTrade,
     sendMessage,
+    testCompleteTradingPlans,
     sendAdminMessage,
     loadUserData,
     updateUserBalance: database.updateUserBalance

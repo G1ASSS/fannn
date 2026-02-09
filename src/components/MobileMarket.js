@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import CountryFlag from './CountryFlags';
 import { 
   fetchRealTimeForexRates,
-  fetchCryptoPrices,
   fetchStockPrices,
   fetchETFPrices,
   fetchFuturesPrices,
@@ -11,7 +10,6 @@ import {
   formatPercentage,
   generateRealTimeChartData,
   createCryptoWebSocket,
-  createForexWebSocket,
   createStockWebSocket,
   createETFWebSocket,
   createFuturesWebSocket
@@ -276,7 +274,7 @@ export default function MobileMarket() {
     let stocksInterval = null;
     let etfInterval = null;
     let futuresInterval = null;
-    // Close existing WebSocket
+      // Close existing WebSocket
     if (webSocket) {
       webSocket.close();
     }

@@ -6,7 +6,6 @@ import { useWallet } from '../contexts/WalletContext';
 import { useDatabase } from '../contexts/DatabaseContext';
 import AccountVerificationModal from './AccountVerificationModal';
 import DepositModal from './DepositModal';
-import WithdrawalModal from './WithdrawalModal';
 import BalanceModal from './BalanceModal';
 import LiveChat from './LiveChat';
 

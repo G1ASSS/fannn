@@ -12,11 +12,7 @@ import {
   formatPrice,
   formatPercentage,
   generateRealTimeChartData,
-  createCryptoWebSocket,
-  createForexWebSocket,
-  createStockWebSocket,
-  createETFWebSocket,
-  createFuturesWebSocket
+  createCryptoWebSocket
 } from '../services/api';
 import SparklineChart from './SparklineChart';
 
@@ -324,7 +320,7 @@ export default function MobileSmartTrading() {
               isPositive: change24h >= 0,
               flags: item.flags,
               flagUrls: item.flagUrls,
-              chart: generateRealTimeChartData(item.rate, isPositive),
+              chart: generateRealTimeChartData(item.rate, isPositive, 16),
               realTimePrice: item.rate,
               lastUpdated: forexData.last_updated || new Date().toISOString()
             };
@@ -369,7 +365,7 @@ export default function MobileSmartTrading() {
               isPositive: isPositive,
               flags: ['US', 'US'], // Crypto doesn't have country flags
               logo: item.logo,
-              chart: generateRealTimeChartData(price, isPositive),
+              chart: generateRealTimeChartData(price, isPositive, 16),
               realTimePrice: price,
               lastUpdated: new Date().toISOString()
             };
@@ -415,7 +411,7 @@ export default function MobileSmartTrading() {
               isPositive: isPositive,
               flags: ['US', 'US'], // US stocks
               logo: item.logo,
-              chart: generateRealTimeChartData(price, isPositive),
+              chart: generateRealTimeChartData(price, isPositive, 16),
               realTimePrice: price,
               lastUpdated: new Date().toISOString()
             };
@@ -449,7 +445,7 @@ export default function MobileSmartTrading() {
               isPositive: isPositive,
               flags: ['US', 'US'],
               logo: item.logo,
-              chart: generateRealTimeChartData(price, isPositive),
+              chart: generateRealTimeChartData(price, isPositive, 16),
               realTimePrice: price,
               lastUpdated: new Date().toISOString()
             };
@@ -483,7 +479,7 @@ export default function MobileSmartTrading() {
               isPositive: isPositive,
               flags: ['US', 'US'],
               logo: item.logo,
-              chart: generateRealTimeChartData(price, isPositive),
+              chart: generateRealTimeChartData(price, isPositive, 16),
               realTimePrice: price,
               lastUpdated: new Date().toISOString()
             };

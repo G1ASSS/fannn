@@ -3,15 +3,13 @@ import {
   doc, 
   addDoc, 
   updateDoc, 
-  deleteDoc, 
   getDoc, 
   getDocs, 
   query, 
   where, 
   orderBy, 
-  limit, 
-  onSnapshot, 
-  serverTimestamp, 
+  onSnapshot,
+  serverTimestamp,
   increment,
   runTransaction
 } from 'firebase/firestore';
@@ -90,7 +88,29 @@ export const getUserByWallet = async (walletAddress) => {
 
 export const updateUserBalance = async (userId, amount, type = 'deposit') => {
   try {
-    const userRef = doc(db, 'users', userId);
+    console.log(`Updating user balance: ${userId}, ${amount}, ${type}`);
+    
+    // First try to find user by wallet address if userId looks like a wallet address
+    let userRef;
+    
+    if (userId.startsWith('0x')) {
+      // userId is a wallet address, find user by walletAddress
+      const usersQuery = query(
+        collection(db, 'users'),
+        where('walletAddress', '==', userId)
+      );
+      const usersSnapshot = await getDocs(usersQuery);
+      
+      if (usersSnapshot.empty) {
+        throw new Error(`User not found with wallet address: ${userId}`);
+      }
+      
+      userRef = doc(db, 'users', usersSnapshot.docs[0].id);
+    } else {
+      // userId is a document ID
+      userRef = doc(db, 'users', userId);
+    }
+    
     const updateData = {
       balance: increment(amount),
       lastUpdated: serverTimestamp()
@@ -100,12 +120,17 @@ export const updateUserBalance = async (userId, amount, type = 'deposit') => {
       updateData.totalDeposits = increment(amount);
     } else if (type === 'withdrawal') {
       updateData.totalWithdrawals = increment(amount);
+    } else if (type === 'profit') {
+      // Track total profit earned from trading
+      updateData.totalProfit = increment(amount);
+      console.log(`💰 Added $${amount.toFixed(2)} profit to user's total profit`);
     }
 
     await updateDoc(userRef, updateData);
+    console.log(`✅ User balance updated successfully: +${amount} (${type})`);
     return true;
   } catch (error) {
-    console.error('Error updating user balance:', error);
+    console.error('❌ Error updating user balance:', error);
     throw error;
   }
 };
@@ -146,20 +171,20 @@ export const approveDeposit = async (depositId, adminId) => {
     // Use Firestore transaction to ensure atomicity
     await runTransaction(db, async (transaction) => {
       const depositDoc = await transaction.get(depositRef);
-      
-      if (!depositDoc.exists()) {
-        throw new Error('Deposit not found');
-      }
+    
+    if (!depositDoc.exists()) {
+      throw new Error('Deposit not found');
+    }
 
-      const depositData = depositDoc.data();
+    const depositData = depositDoc.data();
       const userRef = doc(db, 'users', depositData.userId);
-      
+    
       // Update 1: Change deposit status from 'pending' to 'approved'
       transaction.update(depositRef, {
-        status: 'approved',
-        approvedAt: serverTimestamp(),
-        approvedBy: adminId
-      });
+      status: 'approved',
+      approvedAt: serverTimestamp(),
+      approvedBy: adminId
+    });
 
       // Update 2: Increment user's balance by deposit amount
       transaction.update(userRef, {
@@ -295,6 +320,7 @@ export const createTrade = async (userId, asset, amount, tradeType, leverage = 1
     
     const tradeData = {
       userId,
+      walletAddress: userData.walletAddress, // Add wallet address for consistency
       asset: asset?.toUpperCase() || 'BTC',
       amount: parseFloat(amount),
       tradeType, // 'buy' or 'sell'
@@ -401,6 +427,7 @@ export const validateBalanceAndCreateTrade = async (walletAddress, tradeData) =>
     // Balance is sufficient - create the trade
     const tradeWithValidation = {
       ...tradeData,
+      userId: userDoc.id, // Add the Firestore document ID
       walletAddress: walletAddress.toLowerCase(),
       status: 'Active', // Set to Active since balance is sufficient
       createdAt: serverTimestamp(),
@@ -419,6 +446,7 @@ export const validateBalanceAndCreateTrade = async (walletAddress, tradeData) =>
     
     // Create trade document
     const tradeRef = await addDoc(collection(db, 'trades'), tradeWithValidation);
+    console.log('✅ Trade document created in database with ID:', tradeRef.id);
     
     // Update user's balance (deduct the order amount)
     await updateDoc(doc(db, 'users', userDoc.id), {
@@ -426,7 +454,6 @@ export const validateBalanceAndCreateTrade = async (walletAddress, tradeData) =>
       totalTrades: increment(1),
       lastTradeAt: serverTimestamp()
     });
-    
     return {
       success: true,
       tradeId: tradeRef.id,
@@ -456,25 +483,53 @@ export const closeTrade = async (tradeId) => {
       const days = parseInt(tradeData.timeframe?.split(' ')[0]) || 1;
       const baseAmount = tradeData.amount || tradeData.orderAmount || 0;
       
-      // More realistic profit calculation
-      let profitRate;
+      // Calculate total profit based on timeframe and amount
+      let totalProfitRate;
+      
       if (days === 1) {
-        profitRate = Math.random() * 0.03 + 0.025; // 2.5% to 5.5%
+        // 1 day: (1000-9999USD) 1.5% to 1.8% profit
+        if (baseAmount >= 1000 && baseAmount <= 9999) {
+          totalProfitRate = Math.random() * 0.003 + 0.015; // 1.5% to 1.8%
+        } else {
+          totalProfitRate = Math.random() * 0.01 + 0.01; // 1.0% to 2.0% for other amounts
+        }
       } else if (days === 7) {
-        profitRate = Math.random() * 0.03 + 0.018; // 1.8% to 4.8%
+        // 7 Days: (10000-49999USD) 1.8% to 4.8% profit
+        if (baseAmount >= 10000 && baseAmount <= 49999) {
+          totalProfitRate = Math.random() * 0.03 + 0.018; // 1.8% to 4.8%
+        } else {
+          totalProfitRate = Math.random() * 0.02 + 0.015; // 1.5% to 3.5% for other amounts
+        }
       } else if (days === 15) {
-        profitRate = Math.random() * 0.03 + 0.015; // 1.5% to 4.5%
+        // 15 days: (50000-199999USD) 2.10% to 2.5% profit
+        if (baseAmount >= 50000 && baseAmount <= 199999) {
+          totalProfitRate = Math.random() * 0.004 + 0.021; // 2.10% to 2.5%
+        } else {
+          totalProfitRate = Math.random() * 0.015 + 0.018; // 1.8% to 3.3% for other amounts
+        }
       } else if (days === 30) {
-        profitRate = Math.random() * 0.025 + 0.012; // 1.2% to 3.7%
+        // 30 days: (100000-499999USD) 2.5% to 2.8% profit
+        if (baseAmount >= 100000 && baseAmount <= 499999) {
+          totalProfitRate = Math.random() * 0.003 + 0.025; // 2.5% to 2.8%
       } else {
-        profitRate = Math.random() * 0.02 + 0.01; // 1.0% to 3.0%
+          totalProfitRate = Math.random() * 0.02 + 0.02; // 2.0% to 4.0% for other amounts
+        }
+      } else if (days === 60) {
+        // 60 days: (500000-999999USD) 2.8% to 3% profit
+        if (baseAmount >= 500000 && baseAmount <= 999999) {
+          totalProfitRate = Math.random() * 0.002 + 0.028; // 2.8% to 3.0%
+        } else {
+          totalProfitRate = Math.random() * 0.025 + 0.025; // 2.5% to 5.0% for other amounts
+        }
+      } else {
+        totalProfitRate = Math.random() * 0.01 + 0.01; // 1.0% to 2.0% for other timeframes
       }
       
-      const finalProfit = baseAmount * profitRate;
+      const finalProfit = baseAmount * totalProfitRate;
       
       await updateDoc(tradeRef, {
         status: 'completed',
-        closePrice: tradeData.openPrice * (1 + profitRate),
+        closePrice: tradeData.openPrice * (1 + totalProfitRate),
         profit: finalProfit,
         totalRevenue: finalProfit,
         closedAt: serverTimestamp()
@@ -516,6 +571,8 @@ export const closeTrade = async (tradeId) => {
 // Function to simulate daily profit updates for active Smart Trading orders
 export const updateActiveTradeProfits = async () => {
   try {
+    console.log('🔄 Starting daily profit update for active Smart Trading orders...');
+    
     const tradesQuery = query(
       collection(db, 'trades'),
       where('status', '==', 'Active'),
@@ -523,41 +580,335 @@ export const updateActiveTradeProfits = async () => {
     );
     const tradesSnapshot = await getDocs(tradesQuery);
     
+    console.log(`📊 Found ${tradesSnapshot.docs.length} active Smart Trading orders`);
+    
     const updatePromises = tradesSnapshot.docs.map(async (tradeDoc) => {
       const tradeData = tradeDoc.data();
       const tradeRef = doc(db, 'trades', tradeDoc.id);
       
-      // Calculate daily earnings based on timeframe
+      // Calculate daily earnings based on timeframe and amount
       const days = parseInt(tradeData.timeframe?.split(' ')[0]) || 1;
       const baseAmount = tradeData.amount || tradeData.orderAmount || 0;
       
+      console.log(`💰 Processing trade ${tradeDoc.id}: $${baseAmount} for ${days} days`);
+      
+      let totalProfitRate;
       let dailyRate;
+      
+      // Calculate profit rates based on capital amount and timeframe
       if (days === 1) {
-        dailyRate = 0.03; // 3% daily
+        // 1 day: (1000-9999USD) 1.5% to 1.8% profit
+        if (baseAmount >= 1000 && baseAmount <= 9999) {
+          totalProfitRate = Math.random() * 0.003 + 0.015; // 1.5% to 1.8%
+        } else if (baseAmount < 1000) {
+          totalProfitRate = Math.random() * 0.005 + 0.01; // 1.0% to 1.5% for amounts under 1000
+        } else {
+          totalProfitRate = Math.random() * 0.01 + 0.01; // 1.0% to 2.0% for amounts over 9999
+        }
+        dailyRate = totalProfitRate; // For 1 day, all profit is added in one day
       } else if (days === 7) {
-        dailyRate = 0.0025; // 0.25% daily
+        // 7 Days: (10000-49999USD) 1.8% to 4.8% profit
+        if (baseAmount >= 10000 && baseAmount <= 49999) {
+          totalProfitRate = Math.random() * 0.03 + 0.018; // 1.8% to 4.8%
+        } else if (baseAmount < 10000) {
+          totalProfitRate = Math.random() * 0.015 + 0.012; // 1.2% to 2.7% for amounts under 10000
+        } else {
+          totalProfitRate = Math.random() * 0.02 + 0.015; // 1.5% to 3.5% for amounts over 49999
+        }
+        dailyRate = totalProfitRate / 7; // Distribute profit across 7 days
       } else if (days === 15) {
-        dailyRate = 0.0015; // 0.15% daily
+        // 15 days: (50000-199999USD) 2.10% to 2.5% profit
+        if (baseAmount >= 50000 && baseAmount <= 199999) {
+          totalProfitRate = Math.random() * 0.004 + 0.021; // 2.10% to 2.5%
+        } else if (baseAmount < 50000) {
+          totalProfitRate = Math.random() * 0.015 + 0.015; // 1.5% to 3.0% for amounts under 50000
+        } else {
+          totalProfitRate = Math.random() * 0.015 + 0.018; // 1.8% to 3.3% for amounts over 199999
+        }
+        dailyRate = totalProfitRate / 15; // Distribute profit across 15 days
       } else if (days === 30) {
-        dailyRate = 0.0012; // 0.12% daily
+        // 30 days: (100000-499999USD) 2.5% to 2.8% profit
+        if (baseAmount >= 100000 && baseAmount <= 499999) {
+          totalProfitRate = Math.random() * 0.003 + 0.025; // 2.5% to 2.8%
+        } else if (baseAmount < 100000) {
+          totalProfitRate = Math.random() * 0.02 + 0.02; // 2.0% to 4.0% for amounts under 100000
       } else {
-        dailyRate = 0.001; // 0.1% daily
+          totalProfitRate = Math.random() * 0.02 + 0.02; // 2.0% to 4.0% for amounts over 499999
+        }
+        dailyRate = totalProfitRate / 30; // Distribute profit across 30 days
+      } else if (days === 60) {
+        // 60 days: (500000-999999USD) 2.8% to 3% profit
+        if (baseAmount >= 500000 && baseAmount <= 999999) {
+          totalProfitRate = Math.random() * 0.002 + 0.028; // 2.8% to 3.0%
+        } else if (baseAmount < 500000) {
+          totalProfitRate = Math.random() * 0.025 + 0.025; // 2.5% to 5.0% for amounts under 500000
+        } else {
+          totalProfitRate = Math.random() * 0.025 + 0.025; // 2.5% to 5.0% for amounts over 999999
+        }
+        dailyRate = totalProfitRate / 60; // Distribute profit across 60 days
+      } else {
+        // Default rates for other timeframes
+        totalProfitRate = Math.random() * 0.01 + 0.01; // 1.0% to 2.0%
+        dailyRate = totalProfitRate / days; // Distribute profit across the timeframe
       }
       
       const dailyEarnings = baseAmount * dailyRate;
       const currentTotalRevenue = tradeData.totalRevenue || 0;
+      const newTotalRevenue = currentTotalRevenue + dailyEarnings;
       
+      console.log(`💵 Daily earnings for trade ${tradeDoc.id}: $${dailyEarnings.toFixed(2)} (${(dailyRate * 100).toFixed(2)}% daily rate)`);
+      console.log(`📈 Total revenue so far: $${newTotalRevenue.toFixed(2)}`);
+      
+      // Update trade document with daily earnings and total revenue
       await updateDoc(tradeRef, {
         todayEarnings: dailyEarnings,
-        totalRevenue: currentTotalRevenue + dailyEarnings,
-        profit: currentTotalRevenue + dailyEarnings
+        totalRevenue: newTotalRevenue,
+        profit: newTotalRevenue, // This profit is cumulative daily profit
+        lastProfitUpdate: serverTimestamp()
       });
+      
+      // Add daily earnings to user's balance
+      console.log(`💳 Adding $${dailyEarnings.toFixed(2)} to user balance...`);
+      
+      if (tradeData.walletAddress) {
+        await updateUserBalance(tradeData.walletAddress, dailyEarnings, 'profit');
+        console.log(`✅ Added profit to user balance via wallet address: ${tradeData.walletAddress}`);
+      } else if (tradeData.userId) {
+        await updateUserBalance(tradeData.userId, dailyEarnings, 'profit');
+        console.log(`✅ Added profit to user balance via user ID: ${tradeData.userId}`);
+      }
     });
     
     await Promise.all(updatePromises);
-    console.log('Updated active Smart Trading profits');
+    console.log('✅ Successfully updated all active Smart Trading profits');
   } catch (error) {
-    console.error('Error updating active trade profits:', error);
+    console.error('❌ Error updating active trade profits:', error);
+  }
+};
+
+// Auto-complete trading plans based on timeframe
+export const processCompletedTradingPlans = async () => {
+  try {
+    console.log('🔄 Processing completed trading plans...');
+    
+    // Get all active trading plans
+    const activePlansQuery = query(
+      collection(db, 'trades'),
+      where('status', '==', 'Active'),
+      where('type', '==', 'Smart Trading')
+    );
+    
+    const activePlansSnapshot = await getDocs(activePlansQuery);
+    const now = new Date();
+    let completedCount = 0;
+    
+    for (const planDoc of activePlansSnapshot.docs) {
+      const planData = planDoc.data();
+      const createdAt = planData.createdAt?.toDate ? planData.createdAt.toDate() : new Date(planData.createdAt || 0);
+      
+      // Calculate expected completion time based on timeframe
+      let expectedCompletionTime;
+      const timeframe = planData.timeframe || '1 Day';
+      const days = parseInt(timeframe.split(' ')[0]) || 1;
+      
+      expectedCompletionTime = new Date(createdAt.getTime() + (days * 24 * 60 * 60 * 1000));
+      
+      // Check if plan should be completed
+      if (now >= expectedCompletionTime) {
+        console.log(`📅 Plan ${planDoc.id} has completed (${timeframe} elapsed)`);
+        
+        try {
+          // Calculate final profit based on timeframe and amount
+          const baseAmount = planData.amount || planData.orderAmount || 0;
+          let totalProfitRate;
+          
+          if (days === 1) {
+            // 1 day: 1.5% to 3.0% profit
+            if (baseAmount >= 1000 && baseAmount <= 9999) {
+              totalProfitRate = Math.random() * 0.015 + 0.015; // 1.5% to 3.0%
+            } else {
+              totalProfitRate = Math.random() * 0.02 + 0.01; // 1.0% to 3.0% for other amounts
+            }
+          } else if (days === 7) {
+            // 7 Days: 1.8% to 4.8% profit
+            if (baseAmount >= 10000 && baseAmount <= 49999) {
+              totalProfitRate = Math.random() * 0.03 + 0.018; // 1.8% to 4.8%
+            } else {
+              totalProfitRate = Math.random() * 0.02 + 0.015; // 1.5% to 3.5% for other amounts
+            }
+          } else if (days === 15) {
+            // 15 days: 2.10% to 2.5% profit
+            if (baseAmount >= 50000 && baseAmount <= 199999) {
+              totalProfitRate = Math.random() * 0.004 + 0.021; // 2.10% to 2.5%
+            } else {
+              totalProfitRate = Math.random() * 0.015 + 0.018; // 1.8% to 3.3% for other amounts
+            }
+          } else if (days === 30) {
+            // 30 days: 2.5% to 2.8% profit
+            if (baseAmount >= 100000 && baseAmount <= 499999) {
+              totalProfitRate = Math.random() * 0.003 + 0.025; // 2.5% to 2.8%
+            } else {
+              totalProfitRate = Math.random() * 0.02 + 0.02; // 2.0% to 4.0% for other amounts
+            }
+          } else if (days === 60) {
+            // 60 days: 2.8% to 3% profit
+            if (baseAmount >= 500000 && baseAmount <= 999999) {
+              totalProfitRate = Math.random() * 0.002 + 0.028; // 2.8% to 3.0%
+            } else {
+              totalProfitRate = Math.random() * 0.025 + 0.025; // 2.5% to 5.0% for other amounts
+            }
+          } else {
+            totalProfitRate = Math.random() * 0.01 + 0.01; // 1.0% to 2.0% for other timeframes
+          }
+          
+          const finalProfit = baseAmount * totalProfitRate;
+          const totalReturn = baseAmount + finalProfit;
+          
+          console.log(`💰 Plan ${planDoc.id} profit calculation:`, {
+            amount: baseAmount,
+            timeframe: timeframe,
+            profitRate: (totalProfitRate * 100).toFixed(2) + '%',
+            finalProfit: finalProfit.toFixed(2),
+            totalReturn: totalReturn.toFixed(2)
+          });
+          
+          // Update plan status to completed
+          await updateDoc(doc(db, 'trades', planDoc.id), {
+            status: 'completed',
+            profit: finalProfit,
+            totalReturn: totalReturn,
+            completedAt: serverTimestamp(),
+            profitRate: totalProfitRate,
+            finalYield: totalProfitRate * 100,
+            completionReason: 'Timeframe completed'
+          });
+          
+          // Add final profit to user balance
+          if (planData.walletAddress) {
+            await updateUserBalance(planData.walletAddress, finalProfit, 'profit');
+            console.log(`✅ Added final profit $${finalProfit.toFixed(2)} to user balance via wallet: ${planData.walletAddress}`);
+          } else if (planData.userId) {
+            await updateUserBalance(planData.userId, finalProfit, 'profit');
+            console.log(`✅ Added final profit $${finalProfit.toFixed(2)} to user balance via user ID: ${planData.userId}`);
+          }
+          
+          completedCount++;
+          console.log(`🎉 Plan ${planDoc.id} completed successfully!`);
+          
+        } catch (error) {
+          console.error(`❌ Error completing plan ${planDoc.id}:`, error);
+        }
+      }
+    }
+    
+    if (completedCount > 0) {
+      console.log(`✅ Successfully completed ${completedCount} trading plans`);
+    } else {
+      console.log('ℹ️ No trading plans ready for completion');
+    }
+    
+  } catch (error) {
+    console.error('❌ Error processing completed trading plans:', error);
+  }
+};
+
+// Auto-complete orders based on timeframe (legacy function)
+export const processCompletedOrders = async () => {
+  try {
+    console.log('Processing completed orders...');
+    
+    // Get all active orders
+    const activeOrdersQuery = query(
+      collection(db, 'trades'),
+      where('status', '==', 'Active')
+    );
+    
+    const activeOrdersSnapshot = await getDocs(activeOrdersQuery);
+    const now = new Date();
+    
+    for (const orderDoc of activeOrdersSnapshot.docs) {
+      const orderData = orderDoc.data();
+      const createdAt = orderData.createdAt?.toDate ? orderData.createdAt.toDate() : new Date(orderData.createdAt || 0);
+      
+      // Calculate expected completion time based on timeframe
+      let expectedCompletionTime;
+      const timeframe = orderData.timeframe || '1 Day';
+      const days = parseInt(timeframe.split(' ')[0]) || 1;
+      
+      expectedCompletionTime = new Date(createdAt.getTime() + (days * 24 * 60 * 60 * 1000));
+      
+      if (now >= expectedCompletionTime) {
+        console.log(`Completing order ${orderDoc.id} - timeframe expired`);
+        
+        // Calculate total profit based on timeframe and amount
+        const baseAmount = orderData.amount || orderData.orderAmount || 0;
+        let totalProfitRate;
+        
+        if (days === 1) {
+          // 1 day: (1000-9999USD) 1.5% to 1.8% profit
+          if (baseAmount >= 1000 && baseAmount <= 9999) {
+            totalProfitRate = Math.random() * 0.003 + 0.015; // 1.5% to 1.8%
+          } else {
+            totalProfitRate = Math.random() * 0.01 + 0.01; // 1.0% to 2.0% for other amounts
+          }
+        } else if (days === 7) {
+          // 7 Days: (10000-49999USD) 1.8% to 4.8% profit
+          if (baseAmount >= 10000 && baseAmount <= 49999) {
+            totalProfitRate = Math.random() * 0.03 + 0.018; // 1.8% to 4.8%
+          } else {
+            totalProfitRate = Math.random() * 0.02 + 0.015; // 1.5% to 3.5% for other amounts
+          }
+        } else if (days === 15) {
+          // 15 days: (50000-199999USD) 2.10% to 2.5% profit
+          if (baseAmount >= 50000 && baseAmount <= 199999) {
+            totalProfitRate = Math.random() * 0.004 + 0.021; // 2.10% to 2.5%
+          } else {
+            totalProfitRate = Math.random() * 0.015 + 0.018; // 1.8% to 3.3% for other amounts
+          }
+        } else if (days === 30) {
+          // 30 days: (100000-499999USD) 2.5% to 2.8% profit
+          if (baseAmount >= 100000 && baseAmount <= 499999) {
+            totalProfitRate = Math.random() * 0.003 + 0.025; // 2.5% to 2.8%
+          } else {
+            totalProfitRate = Math.random() * 0.02 + 0.02; // 2.0% to 4.0% for other amounts
+          }
+        } else if (days === 60) {
+          // 60 days: (500000-999999USD) 2.8% to 3% profit
+          if (baseAmount >= 500000 && baseAmount <= 999999) {
+            totalProfitRate = Math.random() * 0.002 + 0.028; // 2.8% to 3.0%
+          } else {
+            totalProfitRate = Math.random() * 0.025 + 0.025; // 2.5% to 5.0% for other amounts
+          }
+        } else {
+          totalProfitRate = Math.random() * 0.01 + 0.01; // 1.0% to 2.0% for other timeframes
+        }
+        
+        const finalProfit = baseAmount * totalProfitRate;
+        const totalReturn = baseAmount + finalProfit;
+        
+        // Update order status
+        await updateDoc(doc(db, 'trades', orderDoc.id), {
+          status: 'completed',
+          profit: finalProfit,
+          totalReturn: totalReturn,
+          completedAt: serverTimestamp(),
+          profitRate: totalProfitRate
+        });
+        
+        // Add profit to user balance
+        if (orderData.walletAddress) {
+          await updateUserBalance(orderData.walletAddress, finalProfit, 'profit');
+        } else if (orderData.userId) {
+          await updateUserBalance(orderData.userId, finalProfit, 'profit');
+        }
+        
+        console.log(`Order ${orderDoc.id} completed with profit: $${finalProfit.toFixed(2)}`);
+      }
+    }
+    
+    console.log('Completed order processing');
+  } catch (error) {
+    console.error('Error processing completed orders:', error);
   }
 };
 
@@ -592,16 +943,41 @@ export const getRealTimePrice = async (asset) => {
 };
 
 // Get user orders/trades
-export const getUserTrades = async (userId) => {
+export const getUserTrades = async (userId, walletAddress) => {
   try {
-    const q = query(
-      collection(db, 'trades'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
+    console.log('Getting user trades for:', { userId, walletAddress });
     
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Get all trades and filter client-side to avoid index issues
+    const q = query(collection(db, 'trades'));
+    const snapshot = await getDocs(q);
+    
+    // Filter by userId OR walletAddress client-side (more precise matching)
+    const trades = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(trade => {
+        // Exact match by userId (if userId is a document ID)
+        if (trade.userId === userId && !userId.startsWith('0x')) {
+          return true;
+        }
+        // Exact match by walletAddress
+        if (trade.walletAddress === walletAddress) {
+          return true;
+        }
+        // If userId is actually a wallet address, match it
+        if (userId.startsWith('0x') && trade.walletAddress === userId) {
+          return true;
+        }
+        return false;
+      });
+    
+    console.log('Retrieved trades:', trades.length, trades);
+    
+    // Sort by createdAt in descending order
+    return trades.sort((a, b) => {
+      const timeA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+      const timeB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+      return timeB - timeA; // Descending order (newest first)
+    });
   } catch (error) {
     console.error('Error getting user trades:', error);
     throw error;
@@ -610,14 +986,21 @@ export const getUserTrades = async (userId) => {
 
 export const getUserDeposits = async (userId) => {
   try {
-    const q = query(
-      collection(db, 'deposits'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
+    // Get all deposits and filter client-side to avoid index issues
+    const q = query(collection(db, 'deposits'));
+    const snapshot = await getDocs(q);
     
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Filter by userId client-side and sort
+    const deposits = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(deposit => deposit.userId === userId)
+      .sort((a, b) => {
+        const timeA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+        const timeB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+        return timeB - timeA; // Descending order (newest first)
+      });
+    
+    return deposits;
   } catch (error) {
     console.error('Error getting user deposits:', error);
     throw error;
@@ -626,14 +1009,21 @@ export const getUserDeposits = async (userId) => {
 
 export const getUserWithdrawals = async (userId) => {
   try {
-    const q = query(
-      collection(db, 'withdrawals'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
+    // Get all withdrawals and filter client-side to avoid index issues
+    const q = query(collection(db, 'withdrawals'));
+    const snapshot = await getDocs(q);
     
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Filter by userId client-side and sort
+    const withdrawals = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(withdrawal => withdrawal.userId === userId)
+      .sort((a, b) => {
+        const timeA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+        const timeB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+        return timeB - timeA; // Descending order (newest first)
+      });
+    
+    return withdrawals;
   } catch (error) {
     console.error('Error getting user withdrawals:', error);
     throw error;
@@ -685,16 +1075,71 @@ export const getAllTrades = async () => {
 };
 
 // Real-time listeners
-export const subscribeToUserTrades = (userId, callback) => {
+export const subscribeToUserTrades = (userId, walletAddress, callback) => {
   try {
-    const q = query(
-      collection(db, 'trades'),
-      where('walletAddress', '==', userId.toLowerCase())
-    );
+    console.log('Setting up trade subscription for:', { userId, walletAddress });
     
-    return onSnapshot(q, callback, (error) => {
+    // Subscribe to all trades and filter client-side to avoid index issues
+    const q = query(collection(db, 'trades'));
+    
+    // Set up listener for the query
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      console.log('Trade subscription update:', {
+        userId,
+        walletAddress,
+        totalDocs: snapshot.docs.length
+      });
+      
+      // Filter by userId OR walletAddress client-side (more precise matching)
+      const allTrades = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const userTrades = allTrades.filter(trade => {
+        // Exact match by userId (if userId is a document ID)
+        if (trade.userId === userId && !userId.startsWith('0x')) {
+          return true;
+        }
+        // Exact match by walletAddress
+        if (trade.walletAddress === walletAddress) {
+          return true;
+        }
+        // If userId is actually a wallet address, match it
+        if (userId.startsWith('0x') && trade.walletAddress === userId) {
+          return true;
+        }
+        return false;
+      });
+      
+      console.log('Filtered trades for user:', {
+        totalTrades: allTrades.length,
+        userTrades: userTrades.length,
+        trades: userTrades,
+        searchCriteria: { userId, walletAddress },
+        sampleTrade: allTrades[0], // Show first trade structure for debugging
+        allTradeUserIds: allTrades.map(t => t.userId).slice(0, 5), // Show first 5 userIds
+        allTradeWalletAddresses: allTrades.map(t => t.walletAddress).slice(0, 5), // Show first 5 wallet addresses
+        matchingTrades: userTrades.map(t => ({
+          id: t.id,
+          userId: t.userId,
+          walletAddress: t.walletAddress,
+          type: t.type,
+          amount: t.amount,
+          status: t.status
+        }))
+      });
+      
+      // Create a mock snapshot with only the user's trades
+      const mockSnapshot = {
+        docs: userTrades.map(trade => ({
+          id: trade.id,
+          data: () => trade
+        }))
+      };
+      
+      callback(mockSnapshot);
+    }, (error) => {
       console.error('Error in subscribeToUserTrades:', error);
     });
+    
+    return unsubscribe;
   } catch (error) {
     console.error('Error setting up subscribeToUserTrades:', error);
     // Return a no-op unsubscribe function

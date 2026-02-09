@@ -7,7 +7,7 @@ import WalletConnectionModal from './WalletConnectionModal';
 
 export default function MobileLanding() {
   const { isConnected } = useWallet();
-  const { user } = useDatabase();
+  const { user, todaysProfit } = useDatabase();
 
   return (
     <div className="min-h-screen bg-white text-gray-900">
@@ -67,7 +67,7 @@ export default function MobileLanding() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                     </svg>
                     <span>
-                      {isConnected ? `$${((user?.balance || 0) * 0.01).toFixed(2)} Today's Profit` : 'Connect wallet to see profit'}
+                      {isConnected ? `$${todaysProfit?.toFixed(2) || '0.00'} Today's Profit` : 'Connect wallet to see profit'}
                     </span>
                   </div>
                 </div>

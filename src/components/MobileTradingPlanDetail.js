@@ -1,9 +1,6 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { useDatabase } from '../contexts/DatabaseContext';
 
 const MobileTradingPlanDetail = ({ trade, onClose, onRecreate }) => {
-  const { user } = useDatabase();
 
   if (!trade) return null;
 
@@ -28,10 +25,31 @@ const MobileTradingPlanDetail = ({ trade, onClose, onRecreate }) => {
         return 'bg-green-100 text-green-800';
       case 'completed':
         return 'bg-blue-100 text-blue-800';
+      case 'finished':
+        return 'bg-green-100 text-green-800';
+      case 'successful':
+        return 'bg-green-100 text-green-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
       default:
         return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStatusDisplay = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'completed':
+        return 'Finished';
+      case 'finished':
+        return 'Finished';
+      case 'successful':
+        return 'Successful';
+      case 'active':
+        return 'Active';
+      case 'pending':
+        return 'Pending';
+      default:
+        return status || 'Active';
     }
   };
 
@@ -41,16 +59,16 @@ const MobileTradingPlanDetail = ({ trade, onClose, onRecreate }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3">
+      <div className="bg-white border-b border-gray-200 px-4 py-3 flex-shrink-0">
         <div className="flex items-center justify-between">
-          <Link to="/account" className="flex items-center">
+          <button onClick={onClose} className="flex items-center">
             <svg className="w-5 h-5 text-gray-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             <span className="text-gray-900 font-medium">Trading Plan</span>
-          </Link>
+          </button>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700"
@@ -62,7 +80,9 @@ const MobileTradingPlanDetail = ({ trade, onClose, onRecreate }) => {
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-4 space-y-4 pb-6">
         {/* Plan Summary Card */}
         <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
           <div className="flex justify-between items-start mb-3">
@@ -75,7 +95,7 @@ const MobileTradingPlanDetail = ({ trade, onClose, onRecreate }) => {
               </p>
             </div>
             <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(trade.status)}`}>
-              {trade.status || 'Active'}
+              {getStatusDisplay(trade.status)}
             </span>
           </div>
 
@@ -225,6 +245,7 @@ const MobileTradingPlanDetail = ({ trade, onClose, onRecreate }) => {
           >
             Back to Account
           </button>
+        </div>
         </div>
       </div>
     </div>
