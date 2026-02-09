@@ -364,51 +364,117 @@ export const createRealTimeForexWebSocket = (pairs, onMessage) => {
   };
 };
 
-// Fetch real-time stock prices using Alpha Vantage API
+// Fallback stock data used when API is unavailable
+const FALLBACK_STOCK_DATA = {
+  AAPL: { price: 255.46, change: 0.54, changePercent: 0.21 },
+  TSLA: { price: 440.40, change: 2.83, changePercent: 0.65 },
+  AMZN: { price: 219.78, change: 0.32, changePercent: 0.15 },
+  GOOGL: { price: 246.54, change: 0.21, changePercent: 0.09 },
+  MSFT: { price: 511.46, change: 0.27, changePercent: 0.05 },
+  UNH: { price: 344.08, change: -1.11, changePercent: -0.32 },
+  AI: { price: 17.14, change: -0.93, changePercent: -5.15 },
+  BRZE: { price: 31.58, change: 0.22, changePercent: 0.70 },
+  FLNC: { price: 11.91, change: 3.66, changePercent: 30.75 },
+  SNOW: { price: 224.64, change: 1.05, changePercent: 0.47 },
+  BB: { price: 4.96, change: 6.17, changePercent: 124.40 },
+  EVGO: { price: 4.57, change: -1.32, changePercent: -22.40 },
+  MQ: { price: 5.36, change: 0.38, changePercent: 7.63 },
+  META: { price: 585.25, change: 3.12, changePercent: 0.54 },
+  NVDA: { price: 875.30, change: 12.45, changePercent: 1.44 },
+  NFLX: { price: 920.15, change: -2.30, changePercent: -0.25 },
+  AMD: { price: 165.80, change: 1.95, changePercent: 1.19 },
+  INTC: { price: 22.45, change: -0.35, changePercent: -1.54 },
+  CRM: { price: 310.60, change: 2.10, changePercent: 0.68 },
+  ADBE: { price: 485.90, change: -1.75, changePercent: -0.36 },
+  PYPL: { price: 78.30, change: 0.85, changePercent: 1.10 }
+};
+
+// Fetch a single stock quote from Finnhub
+const fetchFinnhubQuote = async (symbol) => {
+  const token = process.env.REACT_APP_FINNHUB_TOKEN;
+  if (!token || token === 'demo') return null;
+
+  const response = await fetch(
+    `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`
+  );
+  if (!response.ok) return null;
+
+  const data = await response.json();
+  // Finnhub quote: c=current, d=change, dp=percent change, h=high, l=low, o=open, pc=prev close
+  if (data && data.c > 0) {
+    return {
+      price: data.c,
+      change: data.d || 0,
+      changePercent: data.dp || 0,
+      high: data.h,
+      low: data.l,
+      open: data.o,
+      prevClose: data.pc,
+      timestamp: Date.now()
+    };
+  }
+  return null;
+};
+
+// Fetch real-time stock prices using Finnhub API with fallback
 export const fetchStockPrices = async (symbols = ['AAPL', 'TSLA', 'AMZN', 'GOOGL', 'MSFT']) => {
   const cacheKey = `stocks_realtime_${symbols.join('_')}`;
   
-  // Use shorter cache for real-time data (15 seconds)
+  // Use shorter cache for real-time data (10 seconds)
   const cached = cache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < 15000) {
+  if (cached && Date.now() - cached.timestamp < 10000) {
     return cached.data;
   }
 
+  const stockData = {};
+  const token = process.env.REACT_APP_FINNHUB_TOKEN;
+
   try {
-    // For demo purposes, we'll use realistic stock data
-    // In production, you would use Alpha Vantage or another stock API
-    const realisticStockData = {
-      AAPL: { price: 255.46, change: 0.54, changePercent: 0.21 },
-      TSLA: { price: 440.40, change: 2.83, changePercent: 0.65 },
-      AMZN: { price: 219.78, change: 0.32, changePercent: 0.15 },
-      GOOGL: { price: 246.54, change: 0.21, changePercent: 0.09 },
-      MSFT: { price: 511.46, change: 0.27, changePercent: 0.05 },
-      UNH: { price: 344.08, change: -1.11, changePercent: -0.32 },
-      AI: { price: 17.14, change: -0.93, changePercent: -5.15 },
-      BRZE: { price: 31.58, change: 0.22, changePercent: 0.70 },
-      FLNC: { price: 11.91, change: 3.66, changePercent: 30.75 },
-      SNOW: { price: 224.64, change: 1.05, changePercent: 0.47 },
-      BB: { price: 4.96, change: 6.17, changePercent: 124.40 },
-      EVGO: { price: 4.57, change: -1.32, changePercent: -22.40 },
-      MQ: { price: 5.36, change: 0.38, changePercent: 7.63 }
-    };
-    
-    const stockData = {};
-    symbols.forEach(symbol => {
-      const data = realisticStockData[symbol] || {
-        price: Math.random() * 500 + 50,
-        change: (Math.random() - 0.5) * 10,
-        changePercent: (Math.random() - 0.5) * 5
-      };
-      
-      stockData[symbol] = {
-        price: data.price,
-        change: data.change,
-        changePercent: data.changePercent,
-        timestamp: Date.now()
-      };
-    });
-    
+    if (token && token !== 'demo') {
+      // Fetch from Finnhub API in parallel (batch of 5 to respect rate limits)
+      const batchSize = 5;
+      for (let i = 0; i < symbols.length; i += batchSize) {
+        const batch = symbols.slice(i, i + batchSize);
+        const results = await Promise.allSettled(
+          batch.map(symbol => fetchFinnhubQuote(symbol))
+        );
+        
+        batch.forEach((symbol, idx) => {
+          const result = results[idx];
+          if (result.status === 'fulfilled' && result.value) {
+            stockData[symbol] = result.value;
+          } else {
+            // Use fallback for this symbol
+            const fb = FALLBACK_STOCK_DATA[symbol];
+            stockData[symbol] = fb
+              ? { ...fb, timestamp: Date.now() }
+              : { price: 100, change: 0, changePercent: 0, timestamp: Date.now() };
+          }
+        });
+
+        // Small delay between batches to avoid rate limiting
+        if (i + batchSize < symbols.length) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
+    } else {
+      // No API key — use fallback data with small random variations to simulate movement
+      symbols.forEach(symbol => {
+        const fb = FALLBACK_STOCK_DATA[symbol] || { price: 100, change: 0, changePercent: 0 };
+        const variation = (Math.random() - 0.5) * 0.004; // ±0.2% random tick
+        const newPrice = parseFloat((fb.price * (1 + variation)).toFixed(2));
+        const newChange = parseFloat((newPrice - (fb.price - fb.change)).toFixed(2));
+        const newChangePercent = parseFloat(((newChange / (fb.price - fb.change)) * 100).toFixed(2));
+        
+        stockData[symbol] = {
+          price: newPrice,
+          change: newChange,
+          changePercent: newChangePercent,
+          timestamp: Date.now()
+        };
+      });
+    }
+
     const realTimeData = {
       ...stockData,
       timestamp: Date.now(),
@@ -419,13 +485,14 @@ export const fetchStockPrices = async (symbols = ['AAPL', 'TSLA', 'AMZN', 'GOOGL
     return realTimeData;
   } catch (error) {
     console.error('Error fetching real-time stock prices:', error);
+    if (cached) return cached.data;
     
-    // Return cached data if available
-    if (cached) {
-      return cached.data;
-    }
-    
-    throw error;
+    // Ultimate fallback
+    symbols.forEach(symbol => {
+      const fb = FALLBACK_STOCK_DATA[symbol] || { price: 100, change: 0, changePercent: 0 };
+      stockData[symbol] = { ...fb, timestamp: Date.now() };
+    });
+    return { ...stockData, timestamp: Date.now(), last_updated: new Date().toISOString() };
   }
 };
 
@@ -892,52 +959,162 @@ export const createForexWebSocket = (pairs, onMessage) => {
   };
 };
 
-// Enhanced WebSocket for Stocks with sparkline data
+// Real-time WebSocket for Stocks using Finnhub WebSocket API
 export const createStockWebSocket = (symbols, onMessage) => {
-  let intervalId;
+  const token = process.env.REACT_APP_FINNHUB_TOKEN;
+  let ws = null;
+  let fallbackIntervalId = null;
+  let reconnectAttempts = 0;
+  const maxReconnectAttempts = 5;
   let lastPrices = {};
-  
-  const simulateRealTimeUpdates = async () => {
-    try {
-      const stockData = await fetchStockPrices(symbols);
-      const updates = {};
-      
-      symbols.forEach(symbol => {
-        const symbolData = stockData[symbol];
-        if (symbolData) {
-          const previousPrice = lastPrices[symbol] || symbolData.price;
-          const change = ((symbolData.price - previousPrice) / previousPrice) * 100;
-          
-          updates[symbol] = {
-            symbol: symbol,
-            price: symbolData.price,
-            change24h: symbolData.changePercent,
-            change: change,
-            timestamp: Date.now(),
-            isPositive: change >= 0,
-            sparkline: generateSparklineData(symbolData.price, change >= 0)
-          };
-          
-          lastPrices[symbol] = symbolData.price;
-        }
-      });
-      
-      onMessage(updates);
-    } catch (error) {
-      console.error('Error in Stock WebSocket simulation:', error);
+  let pendingUpdates = {};
+  let debounceTimer = null;
+
+  // Debounced message dispatch — batches rapid WebSocket ticks into one state update
+  const dispatchUpdates = () => {
+    if (Object.keys(pendingUpdates).length > 0) {
+      onMessage({ ...pendingUpdates });
+      pendingUpdates = {};
     }
   };
-  
-  // Start real-time updates every 5 seconds
-  intervalId = setInterval(simulateRealTimeUpdates, 5000);
-  
-  // Initial update
-  simulateRealTimeUpdates();
-  
+
+  // Use real Finnhub WebSocket if token is available
+  if (token && token !== 'demo') {
+    const connectWebSocket = () => {
+      try {
+        ws = new WebSocket(`wss://ws.finnhub.io?token=${token}`);
+
+        ws.onopen = () => {
+          reconnectAttempts = 0;
+          // Subscribe to each stock symbol
+          symbols.forEach(symbol => {
+            ws.send(JSON.stringify({ type: 'subscribe', symbol: symbol }));
+          });
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'trade' && data.data && data.data.length > 0) {
+              // Process trade data — Finnhub sends array of trades
+              data.data.forEach(trade => {
+                const symbol = trade.s;
+                const price = trade.p;
+
+                if (symbols.includes(symbol)) {
+                  const previousPrice = lastPrices[symbol] || price;
+                  const change = previousPrice > 0
+                    ? ((price - previousPrice) / previousPrice) * 100
+                    : 0;
+
+                  pendingUpdates[symbol] = {
+                    symbol: symbol,
+                    price: price,
+                    change24h: change,
+                    change: change,
+                    timestamp: Date.now(),
+                    isPositive: change >= 0,
+                    sparkline: generateSparklineData(price, change >= 0)
+                  };
+
+                  lastPrices[symbol] = price;
+                }
+              });
+
+              // Debounce: dispatch at most every 500ms to avoid excessive re-renders
+              if (debounceTimer) clearTimeout(debounceTimer);
+              debounceTimer = setTimeout(dispatchUpdates, 500);
+            }
+          } catch (err) {
+            // Ignore parse errors from ping/pong frames
+          }
+        };
+
+        ws.onerror = () => {
+          // Silent — onclose will handle reconnect
+        };
+
+        ws.onclose = () => {
+          if (reconnectAttempts < maxReconnectAttempts) {
+            reconnectAttempts++;
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+            setTimeout(connectWebSocket, delay);
+          } else {
+            // Fall back to polling after max reconnect attempts
+            startPollingFallback();
+          }
+        };
+      } catch (err) {
+        startPollingFallback();
+      }
+    };
+
+    connectWebSocket();
+  } else {
+    // No API key — use polling with simulated price variations
+    startPollingFallback();
+  }
+
+  function startPollingFallback() {
+    if (fallbackIntervalId) return; // Already running
+
+    const pollUpdates = async () => {
+      try {
+        const stockData = await fetchStockPrices(symbols);
+        const updates = {};
+
+        symbols.forEach(symbol => {
+          const symbolData = stockData[symbol];
+          if (symbolData) {
+            const previousPrice = lastPrices[symbol] || symbolData.price;
+            const change = previousPrice > 0
+              ? ((symbolData.price - previousPrice) / previousPrice) * 100
+              : 0;
+
+            updates[symbol] = {
+              symbol: symbol,
+              price: symbolData.price,
+              change24h: symbolData.changePercent || change,
+              change: change,
+              timestamp: Date.now(),
+              isPositive: (symbolData.changePercent || change) >= 0,
+              sparkline: generateSparklineData(symbolData.price, (symbolData.changePercent || change) >= 0)
+            };
+
+            lastPrices[symbol] = symbolData.price;
+          }
+        });
+
+        onMessage(updates);
+      } catch (error) {
+        console.error('Error in stock polling fallback:', error);
+      }
+    };
+
+    // Poll every 3 seconds for responsive updates
+    fallbackIntervalId = setInterval(pollUpdates, 3000);
+    pollUpdates(); // Initial fetch
+  }
+
   return {
     close: () => {
-      if (intervalId) {
-        clearInterval(intervalId);
+      if (ws) {
+        // Unsubscribe before closing
+        try {
+          symbols.forEach(symbol => {
+            ws.send(JSON.stringify({ type: 'unsubscribe', symbol: symbol }));
+          });
+        } catch (e) { /* ignore */ }
+        ws.close();
+        ws = null;
+      }
+      if (fallbackIntervalId) {
+        clearInterval(fallbackIntervalId);
+        fallbackIntervalId = null;
+      }
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
       }
     }
   };

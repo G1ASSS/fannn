@@ -21,8 +21,6 @@ import Loan from './components/Loan';
 import SmartTrading from './components/SmartTrading';
 import SignMessageModal from './components/SignMessageModal';
 import AdminPanel from './components/AdminPanel';
-import CreateAdminUser from './components/CreateAdminUser';
-import ProtectedAdminRoute from './components/ProtectedAdminRoute';
 import AlertSystem from './components/AlertSystem';
 import useIsMobile from './hooks/useIsMobile';
 
@@ -53,12 +51,8 @@ function App() {
                 </>
               )
             } />
-            <Route path="/admin/create" element={<CreateAdminUser />} />
-            <Route path="/admin" element={
-              <ProtectedAdminRoute>
-                <AdminPanel />
-              </ProtectedAdminRoute>
-            } />
+            <Route path="/admin" element={<AdminPanel />} />
+            <Route path="/admin/*" element={<AdminPanel />} />
             <Route path="/account" element={
               isMobile ? <MobileAccount /> : (
                 <>
