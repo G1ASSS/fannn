@@ -31,67 +31,67 @@ function App() {
       <WalletProvider>
         <DatabaseProvider>
           <NotificationProvider>
-          <Router>
-          <div className="App">
-          <Routes>
-            <Route path="/" element={isMobile ? <MobileLanding /> : <DesktopLanding />} />
-            <Route path="/market" element={
-              isMobile ? <MobileMarket /> : (
-                <>
-                  <Header />
-                  <Market />
-                </>
-              )
-            } />
-            <Route path="/smart-trading" element={
-              isMobile ? <MobileSmartTrading /> : (
-                <>
-                  <Header />
-                  <SmartTrading />
-                </>
-              )
-            } />
-            <Route path="/admin" element={<AdminPanel />} />
-            <Route path="/admin/*" element={<AdminPanel />} />
-            <Route path="/account" element={
-              isMobile ? <MobileAccount /> : (
-                <>
-                  <Header />
-                  <Account />
-                </>
-              )
-            } />
-            <Route path="/invite-friends" element={
-              <>
-                <Header />
-                <InviteFriends />
-              </>
-            } />
-            <Route path="/help-center" element={
-              <>
-                <Header />
-                <HelpCenter />
-              </>
-            } />
-            <Route path="/loan" element={
-              isMobile ? <MobileLoan /> : (
-                <>
-                  <Header />
-                  <Loan />
-                </>
-              )
-            } />
-            <Route path="/notifications" element={<MobileNotifications />} />
-                        </Routes>
-                        <SignMessageModal />
-                        <AlertSystem />
-                      </div>
-                    </Router>
-                  </NotificationProvider>
-                </DatabaseProvider>
-                </WalletProvider>
-              </LanguageProvider>
-            );
-          }
+            <Router>
+              <div className="App">
+                <Routes>
+                  <Route path="/" element={isMobile ? <MobileLanding /> : <DesktopLanding />} />
+                  <Route path="/market" element={
+                    isMobile ? <MobileMarket /> : (
+                      <>
+                        <Header />
+                        <Market />
+                      </>
+                    )
+                  } />
+                  <Route path="/smart-trading" element={
+                    isMobile ? <MobileSmartTrading /> : (
+                      <>
+                        <Header />
+                        <SmartTrading />
+                      </>
+                    )
+                  } />
+                  <Route path="/admin" element={<AdminPanel />} />
+                  <Route path="/admin/*" element={<AdminPanel />} />
+                  <Route path="/account" element={
+                    isMobile ? <MobileAccount /> : (
+                      <>
+                        <Header />
+                        <Account />
+                      </>
+                    )
+                  } />
+                  <Route path="/invite-friends" element={
+                    <>
+                      <Header />
+                      <InviteFriends />
+                    </>
+                  } />
+                  <Route path="/help-center" element={
+                    <>
+                      <Header />
+                      <HelpCenter />
+                    </>
+                  } />
+                  <Route path="/loan" element={
+                    isMobile ? <MobileLoan /> : (
+                      <>
+                        <Header />
+                        <Loan />
+                      </>
+                    )
+                  } />
+                  <Route path="/notifications" element={<MobileNotifications />} />
+                </Routes>
+                <SignMessageModal />
+                <AlertSystem />
+              </div>
+            </Router>
+          </NotificationProvider>
+        </DatabaseProvider>
+      </WalletProvider>
+    </LanguageProvider>
+  );
+}
 
           export default App;
