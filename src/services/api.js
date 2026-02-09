@@ -7,13 +7,13 @@ const FOREX_HISTORICAL_URL = 'https://api.exchangerate-api.com/v4/historical';
 const FOREX_RAPIDAPI_URL = 'https://currency-exchange.p.rapidapi.com/exchange';
 
 // Alpha Vantage API for stocks and more detailed data
-const ALPHA_VANTAGE_API_KEY = 'demo'; // Replace with your API key
+const ALPHA_VANTAGE_API_KEY = process.env.REACT_APP_ALPHA_VANTAGE_API_KEY || '';
 const ALPHA_VANTAGE_URL = 'https://www.alphavantage.co/query';
 
 // WebSocket URLs for real-time data
 const CRYPTO_WS_URL = 'wss://stream.binance.com:9443/ws/';
 const FOREX_WS_URL = 'wss://api.fxempire.com/v1/en/live';
-const STOCK_WS_URL = 'wss://ws.finnhub.io?token=demo'; // Replace with your Finnhub token
+const STOCK_WS_URL = `wss://ws.finnhub.io?token=${process.env.REACT_APP_FINNHUB_TOKEN || ''}`;
 
 // Cache for API responses to avoid rate limiting
 const cache = new Map();

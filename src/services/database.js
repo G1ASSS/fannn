@@ -18,6 +18,20 @@ import {
 import { db } from '../config/firebase';
 import axios from 'axios';
 
+// Input validation helpers
+const sanitizeAmount = (amount) => {
+  const parsed = parseFloat(amount);
+  if (isNaN(parsed) || !isFinite(parsed) || parsed <= 0) {
+    throw new Error('Invalid amount: must be a positive number');
+  }
+  return Math.round(parsed * 100) / 100; // Round to 2 decimal places
+};
+
+const sanitizeString = (str, maxLength = 500) => {
+  if (typeof str !== 'string') return '';
+  return str.trim().slice(0, maxLength);
+};
+
 // Get user's IP address
 export const getUserIP = async () => {
   try {
@@ -99,16 +113,18 @@ export const updateUserBalance = async (userId, amount, type = 'deposit') => {
 // Deposit Management
 export const createDeposit = async (userId, amount, currency, txHash) => {
   try {
-    // Validate txHash before proceeding
-    if (!txHash || txHash.trim() === '') {
+    // Validate inputs
+    const validAmount = sanitizeAmount(amount);
+    const validTxHash = sanitizeString(txHash, 200);
+    if (!validTxHash) {
       throw new Error('Transaction hash is required');
     }
     
     const depositData = {
       userId,
-      amount: parseFloat(amount),
-      currency: currency?.toUpperCase() || 'USD',
-      txHash: txHash.trim(), // Ensure it's trimmed and not undefined
+      amount: validAmount,
+      currency: sanitizeString(currency, 10)?.toUpperCase() || 'USD',
+      txHash: validTxHash,
       status: 'pending',
       createdAt: serverTimestamp(),
       approvedAt: null,
@@ -181,21 +197,27 @@ export const rejectDeposit = async (depositId, adminId, reason) => {
 // Withdrawal Management
 export const createWithdrawal = async (userId, amount, currency, walletAddress) => {
   try {
+    const validAmount = sanitizeAmount(amount);
+    const validWalletAddress = sanitizeString(walletAddress, 200);
+    if (!validWalletAddress) {
+      throw new Error('Wallet address is required');
+    }
+
     const userDoc = await getDoc(doc(db, 'users', userId));
     if (!userDoc.exists()) {
       throw new Error('User not found');
     }
 
     const userData = userDoc.data();
-    if (userData.balance < amount) {
+    if (userData.balance < validAmount) {
       throw new Error('Insufficient balance');
     }
 
     const withdrawalData = {
       userId,
-      amount: parseFloat(amount),
-      currency: currency?.toUpperCase() || 'USD',
-      walletAddress,
+      amount: validAmount,
+      currency: sanitizeString(currency, 10)?.toUpperCase() || 'USD',
+      walletAddress: validWalletAddress,
       status: 'pending',
       createdAt: serverTimestamp(),
       approvedAt: null,
@@ -340,9 +362,6 @@ export const checkRateLimit = (walletAddress) => {
 // Balance Validation and Order Creation with Real-time Alerts
 export const validateBalanceAndCreateTrade = async (walletAddress, tradeData) => {
   try {
-    console.log('Validating balance for wallet:', walletAddress);
-    console.log('Trade data:', tradeData);
-    
     // Check rate limiting first
     if (!checkRateLimit(walletAddress)) {
       return {
@@ -368,12 +387,8 @@ export const validateBalanceAndCreateTrade = async (walletAddress, tradeData) =>
     const currentBalance = userData.balance || 0;
     const orderAmount = tradeData.amount || 0;
     
-    console.log('Current balance:', currentBalance);
-    console.log('Order amount:', orderAmount);
-    
     // Server-side balance validation
     if (currentBalance < orderAmount) {
-      console.log('Insufficient balance detected');
       return {
         success: false,
         error: 'INSUFFICIENT_FUNDS',
@@ -411,8 +426,6 @@ export const validateBalanceAndCreateTrade = async (walletAddress, tradeData) =>
       totalTrades: increment(1),
       lastTradeAt: serverTimestamp()
     });
-    
-    console.log('Trade created successfully:', tradeRef.id);
     
     return {
       success: true,

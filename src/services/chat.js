@@ -12,6 +12,19 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
+// Sanitize user input to prevent XSS attacks
+const sanitizeInput = (input) => {
+  if (typeof input !== 'string') return '';
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .trim()
+    .slice(0, 2000); // Limit message length
+};
+
 // Auto-reply messages configuration
 const AUTO_REPLY_MESSAGES = [
   "Thank you for your message! We'll get back to you shortly.",
@@ -50,9 +63,12 @@ export const sendAutoReply = async (userId) => {
 // Chat Management
 export const sendMessage = async (userId, message, isAdmin = false, adminId = null) => {
   try {
+    const sanitizedMessage = sanitizeInput(message);
+    if (!sanitizedMessage) throw new Error('Message cannot be empty');
+    
     const messageData = {
       userId, // This should be the Firestore user document ID
-      message,
+      message: sanitizedMessage,
       isAdmin,
       adminId: adminId || null,
       createdAt: serverTimestamp(),
@@ -86,9 +102,12 @@ export const sendMessage = async (userId, message, isAdmin = false, adminId = nu
 // Send message as admin to specific user
 export const sendAdminMessage = async (userId, message, adminId = 'admin') => {
   try {
+    const sanitizedMessage = sanitizeInput(message);
+    if (!sanitizedMessage) throw new Error('Message cannot be empty');
+    
     const messageData = {
       userId, // This should be the Firestore user document ID
-      message,
+      message: sanitizedMessage,
       isAdmin: true,
       adminId,
       createdAt: serverTimestamp(),

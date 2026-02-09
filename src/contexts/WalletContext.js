@@ -26,15 +26,11 @@ export const WalletProvider = ({ children }) => {
 
   // Check if user has previously connected
   useEffect(() => {
-    console.log('WalletContext: Checking wallet connection status...');
     const savedConnection = localStorage.getItem('walletConnected');
     const savedAccount = localStorage.getItem('walletAccount');
     const savedWalletType = localStorage.getItem('walletType');
     
-    console.log('Saved connection:', savedConnection, savedAccount, savedWalletType);
-    
     if (savedConnection === 'true' && savedAccount && savedWalletType) {
-      console.log('Attempting to reconnect wallet...');
       // Try to reconnect to the saved wallet
       reconnectWallet(savedWalletType);
     }
@@ -60,8 +56,8 @@ export const WalletProvider = ({ children }) => {
             setIsConnected(true);
             
             // Check if signature is recent (within 24 hours)
-            const savedSignature = localStorage.getItem('walletSignature');
-            const savedTimestamp = localStorage.getItem('walletTimestamp');
+            const savedSignature = sessionStorage.getItem('walletSignature');
+            const savedTimestamp = sessionStorage.getItem('walletTimestamp');
             const isRecent = savedTimestamp && (Date.now() - parseInt(savedTimestamp)) < 24 * 60 * 60 * 1000;
             
             if (!savedSignature || !isRecent) {
@@ -280,12 +276,9 @@ export const WalletProvider = ({ children }) => {
       // Sign the message
       const signature = await signer.signMessage(message);
       
-      console.log('Message signed successfully:', signature);
-      
-      // Store the signature in localStorage for session management
-      localStorage.setItem('walletSignature', signature);
-      localStorage.setItem('walletMessage', message);
-      localStorage.setItem('walletTimestamp', timestamp.toString());
+      // Store the signature in sessionStorage for session management (cleared on tab close)
+      sessionStorage.setItem('walletSignature', signature);
+      sessionStorage.setItem('walletTimestamp', timestamp.toString());
       
       return signature;
     } catch (error) {

@@ -208,7 +208,7 @@ export const NETWORK_CONFIGS = {
       symbol: 'ETH',
       decimals: 18,
     },
-    rpcUrls: ['https://mainnet.infura.io/v3/YOUR_PROJECT_ID'],
+    rpcUrls: [process.env.REACT_APP_INFURA_RPC_URL || 'https://mainnet.infura.io/v3/'],
     blockExplorerUrls: ['https://etherscan.io'],
   },
   137: {

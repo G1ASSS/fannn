@@ -29,16 +29,12 @@ export const DatabaseProvider = ({ children }) => {
       if (isConnected && account) {
         setIsLoading(true);
         try {
-          console.log('Initializing user for wallet:', account);
           // Check if user exists
           let userData = await database.getUserByWallet(account);
-          console.log('Existing user data:', userData);
           
           if (!userData) {
             // Create new user
-            console.log('Creating new user...');
             userData = await database.createUser(account, walletType);
-            console.log('New user created:', userData);
           }
           
           setUser(userData);
@@ -115,8 +111,6 @@ export const DatabaseProvider = ({ children }) => {
     if (!user || !account) throw new Error('User not found or wallet not connected');
     
     try {
-      console.log('Creating trade with validation:', tradeData);
-      
       // Use the new validation function
       const result = await database.validateBalanceAndCreateTrade(account, tradeData);
       
@@ -202,13 +196,7 @@ export const DatabaseProvider = ({ children }) => {
     if (!user) throw new Error('User not found');
     
     try {
-      console.log('=== SEND MESSAGE DEBUG ===');
-      console.log('User:', user);
-      console.log('User ID:', user.id);
-      console.log('Message:', message);
-      
       const newMessage = await chat.sendMessage(user.id, message, false);
-      console.log('New message created:', newMessage);
       
       setChatMessages(prev => {
         const updated = [...prev, newMessage];
@@ -220,11 +208,8 @@ export const DatabaseProvider = ({ children }) => {
           return timeA - timeB; // Ascending order (oldest first)
         });
         
-        console.log('Updated chat messages (sorted):', sortedMessages);
         return sortedMessages;
       });
-      
-      console.log('Auto-reply will be sent automatically for user messages');
       return newMessage;
     } catch (error) {
       console.error('Error sending message:', error);
@@ -266,11 +251,6 @@ export const DatabaseProvider = ({ children }) => {
 
       // Subscribe to chat messages
       unsubscribeChat = chat.subscribeToChatMessages(user.id, (snapshot) => {
-        console.log('=== CHAT SUBSCRIPTION UPDATE ===');
-        console.log('User ID:', user.id);
-        console.log('Snapshot docs count:', snapshot.docs.length);
-        console.log('Snapshot docs:', snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        
         const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         
         // Sort messages by createdAt in ascending order (oldest first) for proper chat flow
@@ -280,7 +260,6 @@ export const DatabaseProvider = ({ children }) => {
           return timeA - timeB; // Ascending order (oldest first)
         });
         
-        console.log('Processed messages (sorted):', sortedMessages);
         setChatMessages(sortedMessages);
       });
     } catch (error) {

@@ -49,7 +49,7 @@ const TradingDetail = () => {
           }
         } else if (category === 'stocks') {
           // Use Alpha Vantage API for stocks
-          const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=demo`);
+          const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${process.env.REACT_APP_ALPHA_VANTAGE_API_KEY || ''}`);
           const data = await response.json();
           if (data['Global Quote']) {
             price = parseFloat(data['Global Quote']['05. price']);

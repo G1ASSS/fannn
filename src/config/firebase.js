@@ -3,15 +3,15 @@ import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 
-// Firebase configuration
+// Firebase configuration - loaded from environment variables
 const firebaseConfig = {
-  apiKey: "AIzaSyB1Bbr1smnKb9AzfxTh9VZkF3X9Q-Zg2dw",
-  authDomain: "ubss-9f4a1.firebaseapp.com",
-  projectId: "ubss-9f4a1",
-  storageBucket: "ubss-9f4a1.firebasestorage.app",
-  messagingSenderId: "124546511785",
-  appId: "1:124546511785:web:b0d098bf3db618d2b04ab8",
-  measurementId: "G-5X9YC8NLRQ"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID,
+  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase with error handling

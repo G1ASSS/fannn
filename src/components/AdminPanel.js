@@ -1,8 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import * as database from '../services/database';
 import * as chat from '../services/chat';
+import { verifyTOTPCode, getTOTPUri, is2FAConfigured, getTOTPSecret } from '../services/totp';
+
+// Password is stored as base64 in .env to avoid special character issues ($, &, etc.)
+const ADMIN_PASSWORD = atob(process.env.REACT_APP_ADMIN_PASSWORD || '');
 
 const AdminPanel = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authStep, setAuthStep] = useState('password'); // 'password' | 'totp' | 'setup'
+  const [passwordInput, setPasswordInput] = useState('');
+  const [totpInput, setTotpInput] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [showSecret, setShowSecret] = useState(false);
   const [activeTab, setActiveTab] = useState('users');
   const [users, setUsers] = useState([]);
   const [deposits, setDeposits] = useState([]);
@@ -15,6 +26,78 @@ const AdminPanel = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
 
+  // Check session on mount
+  useEffect(() => {
+    const session = sessionStorage.getItem('adminAuthenticated');
+    const sessionExpiry = sessionStorage.getItem('adminSessionExpiry');
+    if (session === 'true' && sessionExpiry && Date.now() < parseInt(sessionExpiry)) {
+      setIsAuthenticated(true);
+    } else {
+      sessionStorage.removeItem('adminAuthenticated');
+      sessionStorage.removeItem('adminSessionExpiry');
+    }
+  }, []);
+
+  const handlePasswordSubmit = (e) => {
+    e.preventDefault();
+    if (passwordInput === ADMIN_PASSWORD) {
+      setAuthError('');
+      setPasswordInput('');
+      if (is2FAConfigured()) {
+        setAuthStep('totp');
+      } else {
+        // 2FA not configured — show setup screen
+        setAuthStep('setup');
+      }
+    } else {
+      setAuthError('Invalid password. Access denied.');
+      setPasswordInput('');
+    }
+  };
+
+  const handleTOTPSubmit = (e) => {
+    e.preventDefault();
+    const code = totpInput.replace(/\s/g, '');
+    if (verifyTOTPCode(code)) {
+      setIsAuthenticated(true);
+      setAuthError('');
+      setTotpInput('');
+      setAuthStep('password');
+      // Session expires in 4 hours
+      sessionStorage.setItem('adminAuthenticated', 'true');
+      sessionStorage.setItem('adminSessionExpiry', (Date.now() + 4 * 60 * 60 * 1000).toString());
+    } else {
+      setAuthError('Invalid 2FA code. Please try again.');
+      setTotpInput('');
+    }
+  };
+
+  const handleSetupComplete = (e) => {
+    e.preventDefault();
+    const code = totpInput.replace(/\s/g, '');
+    if (verifyTOTPCode(code)) {
+      setIsAuthenticated(true);
+      setAuthError('');
+      setTotpInput('');
+      setAuthStep('password');
+      sessionStorage.setItem('adminAuthenticated', 'true');
+      sessionStorage.setItem('adminSessionExpiry', (Date.now() + 4 * 60 * 60 * 1000).toString());
+    } else {
+      setAuthError('Invalid code. Scan the QR code with Google Authenticator and enter the 6-digit code.');
+      setTotpInput('');
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setIsAuthenticated(false);
+    setAuthStep('password');
+    setTotpInput('');
+    setPasswordInput('');
+    setAuthError('');
+    sessionStorage.removeItem('adminAuthenticated');
+    sessionStorage.removeItem('adminSessionExpiry');
+  };
+
   const tabs = [
     { id: 'users', name: 'Users', icon: '👥' },
     { id: 'deposits', name: 'Deposits', icon: '💰' },
@@ -26,35 +109,29 @@ const AdminPanel = () => {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      console.log('Loading data for tab:', activeTab);
       switch (activeTab) {
         case 'users':
           const usersData = await database.getAllUsers();
-          console.log('Users data:', usersData);
           setUsers(usersData);
           break;
         case 'deposits':
           const depositsData = await database.getAllDeposits();
-          console.log('Deposits data:', depositsData);
           setDeposits(depositsData);
           break;
         case 'withdrawals':
           const withdrawalsData = await database.getAllWithdrawals();
-          console.log('Withdrawals data:', withdrawalsData);
           setWithdrawals(withdrawalsData);
           break;
         case 'trades':
           const tradesData = await database.getAllTrades();
-          console.log('Trades data:', tradesData);
           setTrades(tradesData);
           break;
         case 'chat':
           const chatData = await chat.getAllChatMessages();
-          console.log('Chat data:', chatData);
           setChatMessages(chatData);
           break;
         default:
-          console.log('Unknown tab:', activeTab);
+          break;
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -70,18 +147,10 @@ const AdminPanel = () => {
   // Real-time subscription for conversations
   useEffect(() => {
     if (activeTab === 'chat') {
-      console.log('=== ADMIN CHAT SUBSCRIPTION SETUP ===');
-      console.log('Users data:', users);
-      
       const unsubscribe = chat.subscribeToConversations((conversationList) => {
-        console.log('=== ADMIN CONVERSATIONS UPDATE ===');
-        console.log('Raw conversation list:', conversationList);
-        
         // Enhance conversations with user data
         const enhancedConversations = conversationList.map(async (conversation) => {
-          // Try to find user data from the users list
           const userData = users.find(user => user.id === conversation.userId);
-          console.log(`Conversation ${conversation.userId} - Found user data:`, userData);
           
           return {
             ...conversation,
@@ -90,9 +159,7 @@ const AdminPanel = () => {
           };
         });
         
-        // Wait for all user data to be resolved
         Promise.all(enhancedConversations).then(enhanced => {
-          console.log('Enhanced conversations:', enhanced);
           setConversations(enhanced);
         });
       });
@@ -104,15 +171,7 @@ const AdminPanel = () => {
   // Real-time subscription for selected conversation messages
   useEffect(() => {
     if (selectedConversation) {
-      console.log('=== ADMIN SELECTED CONVERSATION SUBSCRIPTION ===');
-      console.log('Selected conversation:', selectedConversation);
-      console.log('User ID:', selectedConversation.userId);
-      
       const unsubscribe = chat.subscribeToChatMessages(selectedConversation.userId, (snapshot) => {
-        console.log('=== ADMIN MESSAGES UPDATE ===');
-        console.log('Snapshot docs count:', snapshot.docs.length);
-        console.log('Snapshot docs:', snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        
         const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         
         // Sort messages by createdAt in ascending order (oldest first) for proper chat flow
@@ -122,7 +181,6 @@ const AdminPanel = () => {
           return timeA - timeB; // Ascending order (oldest first)
         });
         
-        console.log('Processed messages (sorted):', sortedMessages);
         setChatMessages(sortedMessages);
       });
 
@@ -513,12 +571,189 @@ const AdminPanel = () => {
     </div>
   );
 
+  // Authentication gate
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
+
+          {/* Step 1: Password */}
+          {authStep === 'password' && (
+            <>
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                </div>
+                <h1 className="text-2xl font-bold text-gray-900">Admin Login</h1>
+                <p className="text-sm text-gray-500 mt-1">Step 1 of 2 — Enter password</p>
+              </div>
+              <form onSubmit={handlePasswordSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                  <input
+                    type="password"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    placeholder="Enter admin password"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    autoComplete="off"
+                    autoFocus
+                  />
+                </div>
+                {authError && <p className="text-red-600 text-sm">{authError}</p>}
+                <button
+                  type="submit"
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Continue
+                </button>
+              </form>
+            </>
+          )}
+
+          {/* Step 2: TOTP Code */}
+          {authStep === 'totp' && (
+            <>
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                </div>
+                <h1 className="text-2xl font-bold text-gray-900">2FA Verification</h1>
+                <p className="text-sm text-gray-500 mt-1">Step 2 of 2 — Enter Google Authenticator code</p>
+              </div>
+              <form onSubmit={handleTOTPSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">6-Digit Code</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={totpInput}
+                    onChange={(e) => setTotpInput(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="000000"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center text-2xl tracking-[0.5em] font-mono"
+                    autoComplete="off"
+                    autoFocus
+                  />
+                </div>
+                {authError && <p className="text-red-600 text-sm">{authError}</p>}
+                <button
+                  type="submit"
+                  disabled={totpInput.length !== 6}
+                  className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Verify & Login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAuthStep('password'); setAuthError(''); setTotpInput(''); }}
+                  className="w-full px-4 py-2 text-gray-600 hover:text-gray-900 transition-colors text-sm"
+                >
+                  Back to password
+                </button>
+              </form>
+            </>
+          )}
+
+          {/* Setup: First-time 2FA configuration */}
+          {authStep === 'setup' && (
+            <>
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h1 className="text-2xl font-bold text-gray-900">Setup 2FA</h1>
+                <p className="text-sm text-gray-500 mt-1">Scan the QR code with Google Authenticator</p>
+              </div>
+
+              {getTOTPUri() ? (
+                <div className="space-y-4">
+                  <div className="flex justify-center p-4 bg-white border-2 border-gray-200 rounded-lg">
+                    <QRCodeSVG value={getTOTPUri()} size={200} level="M" />
+                  </div>
+
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowSecret(!showSecret)}
+                      className="text-sm text-blue-600 hover:text-blue-800 underline"
+                    >
+                      {showSecret ? 'Hide manual key' : "Can't scan? Enter key manually"}
+                    </button>
+                    {showSecret && (
+                      <div className="mt-2 p-3 bg-gray-100 rounded-lg">
+                        <p className="text-xs text-gray-500 mb-1">Manual entry key:</p>
+                        <p className="font-mono text-sm font-bold text-gray-900 tracking-wider break-all">{getTOTPSecret()}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <form onSubmit={handleSetupComplete} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Enter the 6-digit code to verify</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={totpInput}
+                        onChange={(e) => setTotpInput(e.target.value.replace(/[^0-9]/g, ''))}
+                        placeholder="000000"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent text-center text-2xl tracking-[0.5em] font-mono"
+                        autoComplete="off"
+                        autoFocus
+                      />
+                    </div>
+                    {authError && <p className="text-red-600 text-sm">{authError}</p>}
+                    <button
+                      type="submit"
+                      disabled={totpInput.length !== 6}
+                      className="w-full px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Verify & Complete Setup
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                <div className="text-center p-4 bg-red-50 rounded-lg">
+                  <p className="text-red-600 text-sm">2FA secret not configured. Add <code className="bg-red-100 px-1 rounded">REACT_APP_ADMIN_TOTP_SECRET</code> to your .env file.</p>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => { setAuthStep('password'); setAuthError(''); setTotpInput(''); }}
+                className="w-full mt-4 px-4 py-2 text-gray-600 hover:text-gray-900 transition-colors text-sm"
+              >
+                Back to password
+              </button>
+            </>
+          )}
+
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
-        <div className="mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Admin Panel</h1>
-          <p className="text-gray-600 mt-2 text-sm sm:text-base">Manage users, deposits, withdrawals, and trades</p>
+        <div className="mb-6 sm:mb-8 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Admin Panel</h1>
+            <p className="text-gray-600 mt-2 text-sm sm:text-base">Manage users, deposits, withdrawals, and trades</p>
+          </div>
+          <button
+            onClick={handleAdminLogout}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+          >
+            Logout
+          </button>
         </div>
 
         {/* Tabs */}
